@@ -16,6 +16,12 @@ The dataset is structured in the following way:
 5. gt.csv : optional , you can mark V and P for functions in target binary as ground truth.
 
 
+The Result is structured in the following way:
+1. Cross-Version.csv: The results of experiments on evaluating the resilience of PatchDiscovery to version gap
+2. Cross-FunctionSize.csv: The results of experiments on evaluating the resilience of PatchDiscovery to function size
+3. Cross-PatchSize.csv: The results of experiments on evaluating the resilience of PatchDiscovery to patch size
+
+
 
 
 
