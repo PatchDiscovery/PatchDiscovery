@@ -1,6 +1,6 @@
 from copy import deepcopy as deepcopy
 from AnalyzeBinary.PatchAnalyze.Normalize import Normalize2
-from AnalyzeBinary.PatchAnalyze.BBAnalyze_Temp import BBAnalyze
+from AnalyzeBinary.PatchAnalyze.BBAnalyze import BBAnalyze
 from collections import OrderedDict,defaultdict
 
 class Path:
@@ -134,8 +134,7 @@ def Equal(Ps1,Ps1_1, Ps2, Ps2_1):
 
 
 
-
-def BBRank(PFRestBBDict, VFRestBBDict, SameBBDict, PFBBs, VFBBs, IDF):
+def BBRank(PFRestBBDict, VFRestBBDict, SameBBDict, PFBBs, VFBBs):
 
     RankBB1 = {}
     RankBB12 = {}
@@ -318,8 +317,7 @@ def BBRank(PFRestBBDict, VFRestBBDict, SameBBDict, PFBBs, VFBBs, IDF):
     print()
 
     TempRankBB1, RankBB12, TempRankBB2, BBPair, AddBB1, DelBB2 = BBAnalyze(PP, PPaths, VPaths, PFRestBBDict, VFRestBBDict,
-                                                                   RankBB1, RankBB12, RankBB2, AddBB1, DelBB2, BBPair,
-                                                                   IDF)
+                                                                   RankBB1, RankBB12, RankBB2, AddBB1, DelBB2, BBPair)
     TempAddBB1 = []
     for add1 in AddBB1:
         bb1 = PFBBs[add1]
@@ -382,10 +380,6 @@ def BBRank(PFRestBBDict, VFRestBBDict, SameBBDict, PFBBs, VFBBs, IDF):
     RankBB2 = OrderedDict(sorted(RankBB2.items(), key=lambda item: item[1], reverse=True))
 
     return RankBB1, RankBB12, RankBB2, AddBB1, DelBB2, BBPair
-
-
-
-
 
 
 
