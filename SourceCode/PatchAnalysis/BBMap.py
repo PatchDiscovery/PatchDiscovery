@@ -1,58 +1,116 @@
 from copy import deepcopy
 from collections import OrderedDict, defaultdict
-
-def YesNO(BB, SubAddr):
-    Yes = list(BB.InsDict.values())[-1].split(" ")[1]
-
-    if (Yes == SubAddr):
-        return "Yes"
-    else:
-        return "No"
+from AnalyzeBinary.PatchAnalyze.Normalize import Normalize1, Normalize2, Normalize3
+from AnalyzeBinary.ReadPickle import ReadPickle
 
 
-def FilterAdd(BB1, BB2s, PF, VF, AnchorDict):
-    InsSameAddr =[]
-    InsSame = []
+def CheckBB(addr1, addr2, PF, VF, AnchorDict, CheckNum):
+    bb1 = PF.BBs[addr1]
+    bb2 = VF.BBs[addr2]
 
-    for BB2 in BB2s:
-        if BB1.InsList == BB2.InsList:
-            InsSameAddr.append(BB2.addr)
-            InsSame.append(BB2)
+    Pres1 = bb1.Pres
+    Subs1 = bb1.Subs
 
-    if not len(InsSameAddr) > 1:
-        return InsSameAddr
+    Pres2 = [AnchorDict[pre1] for pre1 in Pres1 if pre1 in AnchorDict]
+    Subs2 = [AnchorDict[sub1] for sub1 in Subs1 if sub1 in AnchorDict]
 
-    BB2s = InsSame
+    if CheckNum == 1:
+        if (set(Pres1).issubset(set(AnchorDict.keys())) and set(Subs1).issubset(set(AnchorDict.keys()))) and set(
+                Pres2) == set(bb2.Pres) and set(Subs2) == set(bb2.Subs):
+            return True
+        return False
 
-    Filter = []
-    for pre1 in BB1.Pres:
-        if (pre1 in AnchorDict) and (len(PF.BBs[pre1].Subs) == 2):
-            attr = YesNO(PF.BBs[pre1], BB1.addr)
+    elif CheckNum == 2:
+        if set(Subs1).issubset(set(AnchorDict.keys())) and set(Subs2) == set(bb2.Subs):
+            return True
+        return False
 
-            pre2 = AnchorDict[pre1]
+    elif CheckNum == 3:
+        if set(Pres1).issubset(set(AnchorDict.keys())) and set(Pres2) == set(bb2.Pres):
+            return True
+        return False
 
-            for BB2 in BB2s:
-                if not (YesNO(VF.BBs[pre2], BB2.addr) == attr):
-                    Filter.append(BB2)
 
-    if (len(BB1.Subs) == 2):
-        for sub1 in BB1.Subs:
-            if (sub1 in AnchorDict):
-                attr = YesNO(BB1, sub1)
+def IdentifyEqualBB(addr1, addr2s, PF, VF, AnchorDict, AddAnchorDict):
+    True_addr2 = ""
+    for addr2 in addr2s:
+        if addr2 not in AddAnchorDict.values():
 
-                sub2 = AnchorDict[sub1]
-                for BB2 in BB2s:
-                    if (BB2 not in Filter):
-                        if not (YesNO(BB2, sub2) == attr):
-                            Filter.append(BB2)
+            bb1 = PF.BBs[addr1]
+            bb2 = VF.BBs[addr2]
 
-    Add = []
+            Pres1 = bb1.Pres
+            Subs1 = bb1.Subs
 
-    for BB2 in BB2s:
-        if (BB2 not in Filter):
-            Add.append(BB2.addr)
+            if set(Pres1).issubset(set(AnchorDict.keys())) and set(Subs1).issubset(set(AnchorDict.keys())):
+                if CheckBB(addr1, addr2, PF, VF, AnchorDict, 1):
+                    return addr2
 
-    return Add
+            elif set(Pres1).issubset(set(AnchorDict.keys())):
+            # elif set(Pres1).issubset(set(AnchorDict.keys())) and set(Subs1).intersection(set(AnchorDict.keys())):
+
+                Pres2 = [AnchorDict[pre1] for pre1 in Pres1]
+                if not set(Pres2) == set(bb2.Pres):
+                    break
+
+                Subs2 = [AnchorDict[sub1] for sub1 in Subs1 if sub1 in AnchorDict]
+                if not set(Subs2).issubset(set(bb2.Subs)):
+                    break
+
+                Subs1 = [sub1 for sub1 in Subs1 if sub1 not in AnchorDict]
+                Subs2 = [sub2 for sub2 in bb2.Subs if sub2 not in AnchorDict.values()]
+
+                Subs1_Rest = []
+                while Subs1:
+                    sub1 = Subs1.pop()
+                    Label = False
+
+                    for sub2 in Subs2:
+                        if PF.BBs[sub1].NormList1 == VF.BBs[sub2].NormList1 \
+                                and CheckBB(sub1, sub2, PF, VF, AnchorDict, 2):
+                            Label = True
+                            Subs2.remove(sub2)
+                            break
+
+                    if not Label:
+                        Subs1_Rest.append(sub1)
+
+                if not Subs1_Rest:
+                    return addr2
+
+            elif set(Subs1).issubset(set(AnchorDict.keys())):
+            # elif set(Pres1).intersection(set(AnchorDict.keys())) and set(Subs1).issubset(set(AnchorDict.keys())):
+                Subs2 = [AnchorDict[sub1] for sub1 in Subs1]
+                if not set(Subs2) == set(bb2.Subs):
+                    break
+
+                Pres2 = [AnchorDict[Pre1] for Pre1 in Pres1 if Pre1 in AnchorDict]
+                if not set(Pres2).issubset(set(bb2.Pres)):
+                    break
+
+                Pres1 = [Pre1 for Pre1 in Pres1 if Pre1 not in AnchorDict]
+                Pres2 = [Pre2 for Pre2 in bb2.Pres if Pre2 not in AnchorDict.values()]
+
+                Pres1_Rest = []
+                while Pres1:
+                    pre1 = Pres1.pop()
+                    Label = False
+
+                    for pre2 in Pres2:
+                        if PF.BBs[pre1].NormList1 == VF.BBs[pre2].NormList1 \
+                                and CheckBB(pre1, pre2, PF, VF, AnchorDict, 3):
+                            Label = True
+                            Pres2.remove(pre2)
+                            break
+
+                    if not Label:
+                        Pres1_Rest.append(pre1)
+
+                if not Pres1_Rest:
+                    return addr2
+
+    return True_addr2
+
 
 def FindBaseAnchor(PF, VF):
     AnchorDict = {}
@@ -76,8 +134,8 @@ def FindBaseAnchor(PF, VF):
     Delete = set()
     for addr1, addr2 in AnchorDict.items():
         for addr1_1, addr2_1 in AnchorDict.items():
-            if not(addr1_1 == addr1):
-                if(addr2_1 == addr2):
+            if not (addr1_1 == addr1):
+                if (addr2_1 == addr2):
                     Delete.add(addr1)
                     Delete.add(addr1_1)
 
@@ -86,154 +144,197 @@ def FindBaseAnchor(PF, VF):
 
     return AnchorDict
 
+
 def FindAnchor(AnchorDict, PFBBDict, VFBBDict):
-    Anchortemp = {}
-    addr1s = []
-    addr2s = []
-
     for addr1, bb1 in PFBBDict.items():
+        # if addr1 == "0x452216" or addr1 == "0x452478":
+        #     print()
+        addr2s = []
+
         for addr2, bb2 in VFBBDict.items():
-
+            # temp1 = bb1.NormList1
+            # temp2 = bb2.NormList1
             if (bb2.NormList1 == bb1.NormList1):
+                addr2s.append(addr2)
 
-                if(addr1 not in addr1s) and (addr2 not in addr2s):
-                    Anchortemp[addr1] = addr2
-                    addr1s.append(addr1)
-                    addr2s.append(addr2)
-
-                elif(addr1 in addr1s) or (addr2 in addr2s):
-                    Del = []
-                    for a1, a2 in Anchortemp.items():
-                        if (a1 == addr1) or (a2 == addr2):
-                            Del.append(a1)
-
-                    for a1 in Del:
-                        Anchortemp.pop(a1)
-    AnchorDict.update(Anchortemp)
+        if len(addr2s) == 1:
+            AnchorDict[addr1] = addr2s[0]
 
 
 def GetRestBBDict(AnchorDict, PFBBDict, VFBBDict):
     for bb1, bb2 in AnchorDict.items():
-        if(bb1 in PFBBDict):
+        if (bb1 in PFBBDict):
             PFBBDict.pop(bb1)
 
-        if(bb2 in VFBBDict):
+        if (bb2 in VFBBDict):
             VFBBDict.pop(bb2)
 
     return PFBBDict, VFBBDict
 
-def UpdatePriority(AddAnchorDict, PFRestBBDict, Priority):
 
+def UpdatePriority(AddAnchorDict, PFRestBBDict, Priority):
     for addr, bb in PFRestBBDict.items():
-        if(addr not in Priority):
+        if (addr not in Priority):
             Priority[addr] = 0
 
-        if(len(set(bb.Pres).intersection(AddAnchorDict.keys()))>0) or (len(set(bb.Subs).intersection(AddAnchorDict.keys()))>0):
+        if (len(set(bb.Pres).intersection(AddAnchorDict.keys())) > 0) or (
+                len(set(bb.Subs).intersection(AddAnchorDict.keys())) > 0):
             Pres = bb.Pres
             Subs = bb.Subs
 
             for pre in Pres:
-                if(pre in AddAnchorDict):
+                if (pre in AddAnchorDict):
                     Priority[addr] = Priority[addr] + 1
 
             for sub in Subs:
-                if(sub in AddAnchorDict):
+                if (sub in AddAnchorDict):
                     Priority[addr] = Priority[addr] + 1
 
-
     Priority = OrderedDict(sorted(Priority.items(), key=lambda item: item[1], reverse=True))
-    # print(Priority)
     return Priority
+
+def CountMapBB(addr1, addr2, PF, VF, AnchorDict):
+
+    Pres2 = [pre2 for pre2 in VF.BBs[addr2].Pres if pre2 not in AnchorDict.values()]
+    Subs2 = [sub2 for sub2 in VF.BBs[addr2].Subs if sub2 not in AnchorDict.values()]
+
+
+    Pres1 = [pre1 for pre1 in PF.BBs[addr1].Pres if pre1 not in AnchorDict]
+    MapPre = []
+    while Pres2:
+        pre2 = Pres2.pop()
+
+        for pre1 in Pres1:
+            if PF.BBs[pre1].NormList1 == VF.BBs[pre2].NormList1:
+                Pres1.remove(pre1)
+                MapPre.append(pre2)
+                break
+
+    Subs1 = [sub1 for sub1 in PF.BBs[addr1].Subs if sub1 not in AnchorDict]
+
+    MapSub = []
+
+    while Subs2:
+        sub2 = Subs2.pop()
+
+        for sub1 in Subs1:
+            if PF.BBs[sub1].NormList1 == VF.BBs[sub2].NormList1:
+                Subs1.remove(sub1)
+                MapSub.append(sub2)
+                break
+
+
+    return len(MapSub) + len(MapPre)
+
+
+
+def ChooseAddr1(Addr1s,addr2, PF, VF, AnchorDict):
+
+    Addr1Count = {}
+    for addr1 in Addr1s:
+        Addr1Count[addr1] = CountMapBB(addr1, addr2, PF, VF,AnchorDict)
+
+    Addr1Count = sorted(Addr1Count.items(), key=lambda x: x[1], reverse=True)
+
+    if Addr1Count[0][1]> Addr1Count[1][1]:
+        return Addr1Count[0][0]
+    else:
+        return False
+
+
+
+
+
+def CheckAddAnchorDict(AddAnchorDict, AnchorDict, PF, VF):
+    Verify = {}
+    for addr1, addr2 in AddAnchorDict.items():
+        if addr2 in Verify.values():
+            continue
+        Addr1s = [a1 for a1, a2 in AddAnchorDict.items() if a2 == addr2]
+
+        if len(Addr1s)>1:
+            ChooseResult = ChooseAddr1(Addr1s,addr2, PF, VF, AnchorDict)
+            if ChooseResult:
+                Verify[ChooseResult] = addr2
+        else:
+            Verify[addr1] = addr2
+
+    return Verify
+
+
 
 
 def Propagate(AnchorDict, Priority, PFRestBBDict, VFRestBBDict, P_Max, P_Min, PF, VF):
-    # print(P_Max)
     AddAnchorDict = {}
-    Used = []
 
     Label = True
-    if(P_Max == P_Min):
+    if (P_Max == P_Min):
         Label = False
 
     for addr1, p in Priority.items():
-        if(p<P_Max): # 不考虑优先级低的
+        if (p < P_Max):  # 不考虑优先级低的
             break
-        if(p == P_Max):
+        if (p == P_Max):
+            if addr1 == "0x4529bb":
+                print()
+            # print(addr1)
             bb1 = PF.BBs[addr1]
 
             Pres1 = bb1.Pres
             Subs1 = bb1.Subs
 
-
             addr2s_pre = []
             for pre1 in Pres1:
-                if(pre1 in AnchorDict):
+                if (pre1 in AnchorDict):
                     pre2 = AnchorDict[pre1]
-                    subs_pre2_temp = VF.BBs[pre2].Subs
-                    subs_pre2 = [i for i in subs_pre2_temp if i in VFRestBBDict]
 
-                    if(len(addr2s_pre)==0):
+                    # subs_pre2 = []
+                    # for i in VF.BBs[pre2].Subs:
+                    #     if i in VFRestBBDict:
+                    #         a = PF.BBs[addr1].NormList1
+                    #         b = VF.BBs[i].NormList1
+                    #         if PF.BBs[addr1].NormList1 == VF.BBs[i].NormList1:
+                    #             subs_pre2.append(i)
+
+                    subs_pre2 = [i for i in VF.BBs[pre2].Subs if
+                                 (i in VFRestBBDict) and (PF.BBs[addr1].NormList1 == VF.BBs[i].NormList1)]
+
+                    if (len(addr2s_pre) == 0):
                         addr2s_pre = subs_pre2
                     else:
                         addr2s_pre = list(set(addr2s_pre).intersection(set(subs_pre2)))
 
-
             addr2s_sub = []
             for sub1 in Subs1:
-                if(sub1 in AnchorDict):
+                if (sub1 in AnchorDict):
                     sub2 = AnchorDict[sub1]
-                    # print('\033[33m%s\033[0m' % (sub2))
-                    pres_sub2_temp = VF.BBs[sub2].Pres
-                    pres_sub2 = [i for i in pres_sub2_temp if i in VFRestBBDict]
+                    pres_sub2 = [i for i in VF.BBs[sub2].Pres if
+                                 (i in VFRestBBDict) and (PF.BBs[addr1].NormList1 == VF.BBs[i].NormList1)]
 
-                    # print('\033[33m%s\033[0m' % (pres_sub2))
-
-                    if(len(addr2s_sub)==0):
+                    if (len(addr2s_sub) == 0):
                         addr2s_sub = pres_sub2
                     else:
                         addr2s_sub = list(set(addr2s_sub).intersection(set(pres_sub2)))
 
             addr2s = []
-            if(len(addr2s_pre)>0 and (len(addr2s_sub)>0)):
+            if (len(addr2s_pre) > 0 and (len(addr2s_sub) > 0)):
                 addr2s = list(set(addr2s_pre).intersection(set(addr2s_sub)))
-            elif(len(addr2s_pre)>0):
+            elif (len(addr2s_pre) > 0):
                 addr2s = addr2s_pre
-            elif(len(addr2s_sub)>0):
+            elif (len(addr2s_sub) > 0):
                 addr2s = addr2s_sub
 
-            Add = []
-            for addr2 in addr2s:
-                if(addr2 in VFRestBBDict):
-                    if(PF.BBs[addr1].NormList1 == VF.BBs[addr2].NormList1):
-                        Add.append(addr2)
+            if len(addr2s) == 1:
+                AddAnchorDict[addr1] = addr2s[0]
+            else:
+                addr2 = IdentifyEqualBB(addr1, addr2s, PF, VF, AnchorDict, AddAnchorDict)
+                if addr2:
+                    AddAnchorDict[addr1] = addr2
 
-            Add = list(set(Add))
 
-            if (len(Add) > 1):
-                Addr1BB = PF.BBs[addr1]
-                Addr2BBs = []
-                for addr2 in Add:
-                    Addr2BBs.append(VF.BBs[addr2])
+    AddAnchorDict = CheckAddAnchorDict(AddAnchorDict, AnchorDict, PF, VF)
+    if (len(AddAnchorDict) > 0):
 
-                Add = FilterAdd(Addr1BB, Addr2BBs, PF, VF, AnchorDict)
-
-            Add = list(set(Add))
-
-            if(len(Add) == 1):
-                if(Add[0] in Used):
-                    Dela1 = []
-                    for a1, a2 in AddAnchorDict.items():
-                        if(a2 == Add[0]):
-                            Dela1.append(a1)
-                    for a1 in Dela1:
-                        if(a1 in AddAnchorDict):
-                            AddAnchorDict.pop(a1)
-
-                else:
-                    Used.append(Add[0])
-                    AddAnchorDict[addr1] = Add[0]
-
-    if(len(AddAnchorDict)>0):
         for addr1, addr2 in AddAnchorDict.items():
             AnchorDict[addr1] = addr2
 
@@ -241,16 +342,16 @@ def Propagate(AnchorDict, Priority, PFRestBBDict, VFRestBBDict, P_Max, P_Min, PF
             PFRestBBDict.pop(addr1)
             VFRestBBDict.pop(addr2)
         Priority = UpdatePriority(AddAnchorDict, PFRestBBDict, Priority)
-        if(len(Priority)>0):
+        if (len(Priority) > 0):
             P_Max = Priority[list(Priority.keys())[0]]
             P_Min = Priority[list(Priority.keys())[len(list(Priority.keys())) - 1]]
             Propagate(AnchorDict, Priority, PFRestBBDict, VFRestBBDict, P_Max, P_Min, PF, VF)
-    elif(Label):
+    elif (Label):
         for addr, p in Priority.items():
             if (p < P_Max):
                 P_Max = p
                 break
-        if(P_Max>0)and(len(Priority)>0):
+        if (P_Max > 0) and (len(Priority) > 0):
             P_Min = Priority[list(Priority.keys())[len(list(Priority.keys())) - 1]]
             Propagate(AnchorDict, Priority, PFRestBBDict, VFRestBBDict, P_Max, P_Min, PF, VF)
         else:
@@ -258,20 +359,51 @@ def Propagate(AnchorDict, Priority, PFRestBBDict, VFRestBBDict, P_Max, P_Min, PF
     else:
         return
 
+
 def AnchorAndPropagate(AnchorDict, PFBBs, VFBBs, PF, VF):
     PFRestBBDict, VFRestBBDict = GetRestBBDict(AnchorDict, deepcopy(PFBBs), deepcopy(VFBBs))
 
-    if(len(PFRestBBDict) == 0) or (len(VFRestBBDict) == 0):
+    if (len(PFRestBBDict) == 0) or (len(VFRestBBDict) == 0):
         return AnchorDict, PFRestBBDict, VFRestBBDict
 
     Priority = UpdatePriority(AnchorDict, PFRestBBDict, {})
-    # print(Priority)
 
     P_Max = Priority[list(Priority.keys())[0]]
     P_Min = Priority[list(Priority.keys())[len(list(Priority.keys())) - 1]]
     Propagate(AnchorDict, Priority, PFRestBBDict, VFRestBBDict, P_Max, P_Min, PF, VF)
 
+    return AnchorDict, PFRestBBDict, VFRestBBDict
 
+
+def BBMap(PF, VF):
+    print(10 * "-" + "\033[;33mFind Base Anchor\033[0m" + 10 * "-")
+    AnchorDict = FindBaseAnchor(PF, VF)
+
+    for addr1, addr2 in AnchorDict.items():
+        print(addr1, addr2)
+    print()
+
+    AnchorDict, PFRestBBDict, VFRestBBDict = AnchorAndPropagate(AnchorDict, PF.BBs, VF.BBs, PF, VF)
+
+    print(10 * "-" + "\033[;33mLast Check\033[0m" + 10 * "-")
+    AnchorDict, PFRestBBDict, VFRestBBDict = LastCheck(AnchorDict, PFRestBBDict, VFRestBBDict, PF, VF)
+    print()
+
+    print(10 * "-" + "\033[;33mMatch BB\033[0m" + 10 * "-")
+    for addr1 in PF.BBs.keys():
+        if (addr1 in AnchorDict):
+            print(addr1, AnchorDict[addr1])
+        else:
+            print(addr1)
+
+    print(10 * "-" + "\033[;33mPF Rest BB\033[0m" + 10 * "-")
+    for addr, BB in PFRestBBDict.items():
+        print(BB)
+
+    print(10 * "-" + "\033[;33mVF Rest BB\033[0m" + 10 * "-")
+    for addr, BB in VFRestBBDict.items():
+        print(BB)
+    # print(VFRestBBDict)
     return AnchorDict, PFRestBBDict, VFRestBBDict
 
 
@@ -285,78 +417,75 @@ def LastCheck(AnchorDict, PFRestBBDict, VFRestBBDict, PF, VF):
 
         Prepre1s = []
         for pre1 in bb1.Pres:
-            if(pre1 not in AnchorDict) and (pre1 in PF.BBs):
+            if (pre1 not in AnchorDict) and (pre1 in PF.BBs):
                 for prepre1 in PF.BBs[pre1].Pres:
-                    if(prepre1 not in AnchorDict) and (prepre1 in PFRestBBDict):
+                    if (prepre1 not in AnchorDict) and (prepre1 in PFRestBBDict):
                         Prepre1s.append(prepre1)
         Prepre1s = list(set(Prepre1s))
 
         Prepre2s = []
         for pre2 in bb2.Pres:
-            if(pre2 not in list(AnchorDict.values())) and (pre2 in VF.BBs):
+            if (pre2 not in list(AnchorDict.values())) and (pre2 in VF.BBs):
                 for prepre2 in VF.BBs[pre2].Pres:
-                    if(prepre2 not in list(AnchorDict.values())) and (prepre2 in VFRestBBDict):
+                    if (prepre2 not in list(AnchorDict.values())) and (prepre2 in VFRestBBDict):
                         Prepre2s.append(prepre2)
 
         Prepre2s = list(set(Prepre2s))
         for prepre1 in Prepre1s:
             for prepre2 in Prepre2s:
-                if(PF.BBs[prepre1].NormList1 == VF.BBs[prepre2].NormList1):
+                if (PF.BBs[prepre1].NormList1 == VF.BBs[prepre2].NormList1):
                     TempBBPairDict[prepre1].append(prepre2)
-
 
         Subsub1s = []
         for sub1 in bb1.Subs:
-            if(sub1 not in AnchorDict) and (sub1 in PF.BBs):
+            if (sub1 not in AnchorDict) and (sub1 in PF.BBs):
                 for subsub1 in PF.BBs[sub1].Subs:
-                    if(subsub1 not in AnchorDict) and (subsub1 in PFRestBBDict):
+                    if (subsub1 not in AnchorDict) and (subsub1 in PFRestBBDict):
                         Subsub1s.append(subsub1)
         Subsub1s = list(set(Subsub1s))
 
         Subsub2s = []
         for sub2 in bb2.Subs:
-            if(sub2 not in list(AnchorDict.values())) and (sub2 in VF.BBs):
+            if (sub2 not in list(AnchorDict.values())) and (sub2 in VF.BBs):
                 for subsub2 in VF.BBs[sub2].Subs:
-                    if(subsub2 not in list(AnchorDict.values())) and (subsub2 in VFRestBBDict):
+                    if (subsub2 not in list(AnchorDict.values())) and (subsub2 in VFRestBBDict):
                         Subsub2s.append(subsub2)
         Subsub2s = list(set(Subsub2s))
 
         for subsub1 in Subsub1s:
             for subsub2 in Subsub2s:
-                if(subsub1 not in AnchorDict) and (subsub2 not in list(AnchorDict.items())):
+                if (subsub1 not in AnchorDict) and (subsub2 not in list(AnchorDict.items())):
                     if (PF.BBs[subsub1].NormList1 == VF.BBs[subsub2].NormList1):
                         TempBBPairDict[subsub1].append(subsub2)
 
-
-
     for addr1, addr2s in TempBBPairDict.items():
         addr2s = list(set(addr2s))
-        if(len(addr2s)==1):
+        if (len(addr2s) == 1):
             AddAnchorDict[addr1] = addr2s[0]
 
     TempAddAnchorDict = {}
     for addr1, addr2 in AddAnchorDict.items():
         Label = True
-        for key, value in  AddAnchorDict.items():
-            if not(key == addr1):
-                if(addr2 == value):
+        for key, value in AddAnchorDict.items():
+            if not (key == addr1):
+                if (addr2 == value):
                     Label = False
                     break
 
-        if(Label):
+        if (Label):
             TempAddAnchorDict[addr1] = addr2
             AnchorDict[addr1] = addr2
 
-    if(len(TempAddAnchorDict.keys())>0):
+    if (len(TempAddAnchorDict.keys()) > 0):
         AnchorDict, PFRestBBDict, VFRestBBDict = AnchorAndPropagate(AnchorDict, PFRestBBDict, VFRestBBDict, PF, VF)
 
     for addr1, bb1 in PFRestBBDict.items():
         addr2s = []
         for addr2, bb2 in VFRestBBDict.items():
-            if(bb1.InsList == bb2.InsList):
+            if (bb1.InsList == bb2.InsList):
                 addr2s.append(addr2)
 
-        if(len(addr2s) == 1):
+        if (len(addr2s) == 1):
             AddAnchorDict[addr1] = addr2s[0]
 
     TempAddAnchorDict = {}
@@ -376,35 +505,3 @@ def LastCheck(AnchorDict, PFRestBBDict, VFRestBBDict, PF, VF):
         AnchorDict, PFRestBBDict, VFRestBBDict = AnchorAndPropagate(AnchorDict, PFRestBBDict, VFRestBBDict, PF, VF)
 
     return AnchorDict, PFRestBBDict, VFRestBBDict
-
-
-def BBMap(PF, VF):
-
-    print(10 * "-" + "\033[;33mFind Base Anchor\033[0m" + 10 * "-")
-    AnchorDict = FindBaseAnchor(PF, VF)
-
-
-    for addr1, addr2 in AnchorDict.items():
-        print(addr1, addr2)
-    print()
-
-    AnchorDict, PFRestBBDict, VFRestBBDict = AnchorAndPropagate(AnchorDict, PF.BBs, VF.BBs, PF, VF)
-
-    print(10 * "-" + "\033[;33mLast Check\033[0m" + 10 * "-")
-    AnchorDict, PFRestBBDict, VFRestBBDict = LastCheck(AnchorDict, PFRestBBDict, VFRestBBDict, PF, VF)
-    print()
-
-    print(10*"-" + "\033[;33mMatch BB\033[0m" + 10*"-")
-    for addr1 in PF.BBs.keys():
-        if(addr1 in AnchorDict):
-            print(addr1, AnchorDict[addr1])
-        else:
-            print(addr1)
-
-
-    return AnchorDict, PFRestBBDict, VFRestBBDict,
-
-
-
-
-
